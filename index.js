@@ -1,6 +1,8 @@
 var inputData = require('./data/input.json');
 
 const maxPower = 2100;      // Максимальная мощность сети
+var dayInterval = [7,21];   // Дневной интервал
+var nightInterval = [21,7]; // Ночной интервал
 
 // Формирует массив часов и их тарификация
 function getHoursArray(rates) {
@@ -26,6 +28,14 @@ function getHoursArray(rates) {
     }
 
     return result;
+}
+
+function checkDeviceMode(mode, time) {
+    switch(mode) {
+        case 'day': return dayInterval[0] <= time && time < dayInterval[1];
+        case 'night': return nightInterval[0] <= time && (24 - time) < nightInterval[1];
+        default: return true;
+    }
 }
 
 // Преобразует вычисленные данные к нужному виду
@@ -59,7 +69,7 @@ function adapter(inputHours) {
     return result;
 }
 
-
+// Получаем отсортированные по тарифу часы и отсортированные по потреблению устройства
 var hoursSortedByRate = getHoursArray(inputData.rates.sort((a, b) => a.rate - b.rate).reverse());
 var devicesSorteredByPower = [...inputData.devices].sort((a, b) => a.power - b.power).reverse();
 
@@ -74,6 +84,7 @@ var devicesSorteredByPower = [...inputData.devices].sort((a, b) => a.power - b.p
         hour['items'] = [];
 
         for (device of devicesSorteredByPower) {
+            if(device.mode && !checkDeviceMode(device.mode, hour.id)) continue;
             usage[device.id] = usage[device.id] ? usage[device.id] : 0;
 
             if (usage[device.id] >= 0 && usage[device.id] < device.duration) {
@@ -87,5 +98,36 @@ var devicesSorteredByPower = [...inputData.devices].sort((a, b) => a.power - b.p
         }
     }
 })();
-
+// 
 console.log(adapter(hoursSortedByRate.hours));
+
+// Проверка на количество запусков устройства
+function checkDeviceLaunching (schedule) {
+    var tst = {};
+    var count = schedule.forEach((day) => {
+      day.items.forEach((device) => {
+        tst[device.id] ? tst[device.id] : tst[device.id] = 0;
+        tst[device.id] += 1;
+      })
+    });
+    
+    let hasError = false
+    let i = 0;
+    while(!hasError && i < inputData.devices.lenght) {
+        hasError = inputData.devices[i].duration == tst[inputData.devices[i].id] ? false : true;
+        i++;
+    }
+    hasError ? console.error('checkDeviceLaunching: не совпадает количество запусков') : console.log('checkDeviceLaunching: все гуд') ;
+}
+checkDeviceLaunching (hoursSortedByRate['hours']);
+// Проверка мощности каждого устройства
+function checkDevicePower(devices) {
+    let hasError = false;
+    let i = 0;
+    while(!hasError && i < devices.lenght) {
+        hasError = devices[i].power <= maxPower ? false : true;
+        i++;
+    }    
+    hasError ? console.error('checkDevicePower: Потребление устроства выше maxPower') : console.log('checkDevicePower: все гуд') ;        
+}
+checkDevicePower(inputData.devices);
